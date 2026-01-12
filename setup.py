@@ -1,7 +1,7 @@
 import os
 from setuptools import setup
 
-_version_file = os.path.join(os.path.dirname(__file__), "netbox_ip_permissions_synchronization", "_version.py")
+_version_file = os.path.join(os.path.dirname(__file__), "netbox_custom_permissions_synchronization", "_version.py")
 _version_data = {}
 with open(_version_file, encoding="utf-8") as f:
     exec(f.read(), _version_data)
@@ -17,7 +17,7 @@ with open("README.md", encoding="utf-8") as f:
     long_description = f.read()
 
 setup(
-    name="netbox_ip_permissions_synchronization",
+    name="netbox_custom_permissions_synchronization",
     version=__version__,
     description=__description__,
     long_description=long_description,
@@ -26,7 +26,7 @@ setup(
     author=__author__,
     author_email=__author_email__,
     license=__license__,
-    packages=["netbox_ip_permissions_synchronization"],
-    package_data={"netbox_ip_permissions_synchronization": ["templates/netbox_ip_permissions_synchronization/*.html"]},
+    packages=["netbox_custom_permissions_synchronization"],
+    package_data={"netbox_custom_permissions_synchronization": ["templates/netbox_custom_permissions_synchronization/*.html"]},
     zip_safe=False,
 )

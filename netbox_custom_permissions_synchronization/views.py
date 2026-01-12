@@ -7,8 +7,9 @@ from django.shortcuts import redirect, render
 from django.views.generic import View
 
 from ipam.models import IPAddress, Prefix, VLAN
-from virtualization.models import Interface as VMInterface
-from virtualization.models import VirtualDisk, VirtualMachine
+
+# NetBox 4.3.x: VM interface model is VMInterface (NOT Interface)
+from virtualization.models import VMInterface, VirtualDisk, VirtualMachine
 
 from .utils import (
     IPAddressInfo,
@@ -193,7 +194,6 @@ class PrefixPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, Vie
             prefix_permissions = get_custom_field_value(prefix, "tenant_permissions")
             prefix_permissions_ro = get_custom_field_value(prefix, "tenant_permissions_ro")
 
-            # Sync VLAN first (if assigned)
             vlan_updated = False
             vlan_failed = False
             if getattr(prefix, "vlan", None):
@@ -224,7 +224,6 @@ class PrefixPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, Vie
                         exc_info=True,
                     )
 
-            # Then sync IPs
             ips_in_prefix, _ = get_ips_in_prefix(prefix)
 
             updated_count = 0
@@ -284,10 +283,11 @@ class PrefixPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, Vie
 class VMPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """Virtual Machine -> VM Interfaces + Virtual Disks"""
 
+    # IMPORTANT: VM interfaces use vminterface in permission codenames
     permission_required = (
         "virtualization.view_virtualmachine",
-        "virtualization.view_interface",
-        "virtualization.change_interface",
+        "virtualization.view_vminterface",
+        "virtualization.change_vminterface",
         "virtualization.view_virtualdisk",
         "virtualization.change_virtualdisk",
     )
@@ -388,7 +388,6 @@ class VMPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, View):
             updated_disks = 0
             failed_disks = 0
 
-            # Interfaces
             for iface in VMInterface.objects.filter(virtual_machine=vm):
                 try:
                     changed = False
@@ -413,7 +412,6 @@ class VMPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     failed_ifaces += 1
                     logger.error(f"Error updating VM interface {iface.id}: {str(e)}", exc_info=True)
 
-            # Disks
             for disk in VirtualDisk.objects.filter(virtual_machine=vm):
                 try:
                     changed = False

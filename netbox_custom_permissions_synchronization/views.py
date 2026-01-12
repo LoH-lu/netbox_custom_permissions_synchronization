@@ -8,7 +8,7 @@ from django.views.generic import View
 
 from ipam.models import IPAddress, Prefix, VLAN
 
-# NetBox 4.3.x: VM interface model is VMInterface (NOT Interface)
+# NetBox 4.3.x
 from virtualization.models import VMInterface, VirtualDisk, VirtualMachine
 
 from .utils import (
@@ -95,7 +95,7 @@ def get_ips_in_prefix(prefix):
 
 
 class PrefixPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    """Prefix -> IPs (+ VLAN)"""
+    """Prefix -> IPs (+ VLAN). Sync tenant + CFs."""
 
     permission_required = (
         "ipam.view_ipaddress",
@@ -173,6 +173,7 @@ class PrefixPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, Vie
                     "ips_total": len(ips_in_prefix),
                 },
             )
+
         except Exception as e:
             logger.error(f"Error in Prefix GET: {str(e)}", exc_info=True)
             messages.error(request, f"An error occurred: {str(e)}")
@@ -194,6 +195,7 @@ class PrefixPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, Vie
             prefix_permissions = get_custom_field_value(prefix, "tenant_permissions")
             prefix_permissions_ro = get_custom_field_value(prefix, "tenant_permissions_ro")
 
+            # VLAN
             vlan_updated = False
             vlan_failed = False
             if getattr(prefix, "vlan", None):
@@ -224,6 +226,7 @@ class PrefixPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, Vie
                         exc_info=True,
                     )
 
+            # IPs
             ips_in_prefix, _ = get_ips_in_prefix(prefix)
 
             updated_count = 0
@@ -254,21 +257,21 @@ class PrefixPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, Vie
                     failed_count += 1
                     logger.error(f"Error updating IP {ip_info.id}: {str(e)}", exc_info=True)
 
-            message_parts = []
-            if updated_count > 0:
-                message_parts.append(f"synchronized {updated_count} IP address(es)")
+            parts = []
+            if updated_count:
+                parts.append(f"synchronized {updated_count} IP address(es)")
             if vlan_updated:
-                message_parts.append("synchronized VLAN")
-            if failed_count > 0:
-                message_parts.append(f"failed to update {failed_count} IP address(es)")
+                parts.append("synchronized VLAN")
+            if failed_count:
+                parts.append(f"failed to update {failed_count} IP address(es)")
             if vlan_failed:
-                message_parts.append("failed to update VLAN")
+                parts.append("failed to update VLAN")
 
-            if message_parts:
+            if parts:
                 if vlan_failed and updated_count == 0 and failed_count == 0 and not vlan_updated:
                     messages.error(request, "Failed to update VLAN")
                 else:
-                    messages.success(request, f"Successfully {' and '.join(message_parts)}")
+                    messages.success(request, f"Successfully {' and '.join(parts)}")
             else:
                 messages.info(request, "No changes needed")
 
@@ -281,9 +284,13 @@ class PrefixPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, Vie
 
 
 class VMPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    """Virtual Machine -> VM Interfaces + Virtual Disks"""
+    """
+    Virtual Machine -> VM Interfaces + Virtual Disks.
 
-    # IMPORTANT: VM interfaces use vminterface in permission codenames
+    NOTE: VMInterface and VirtualDisk do NOT have a tenant field in NetBox 4.3.x,
+    so we only sync custom fields.
+    """
+
     permission_required = (
         "virtualization.view_virtualmachine",
         "virtualization.view_vminterface",
@@ -318,14 +325,13 @@ class VMPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 info = VMInterfaceInfo(
                     id=iface.id,
                     name=str(iface.name),
-                    tenant_id=iface.tenant.id if iface.tenant else None,
-                    tenant_name=iface.tenant.name if iface.tenant else "",
+                    tenant_id=None,
+                    tenant_name="",
                     tenant_permissions=safe_to_string(get_custom_field_value(iface, "tenant_permissions")),
                     tenant_permissions_ro=safe_to_string(get_custom_field_value(iface, "tenant_permissions_ro")),
                 )
                 if (
-                    info.tenant_id != vm_info.tenant_id
-                    or info.tenant_permissions != vm_info.tenant_permissions
+                    info.tenant_permissions != vm_info.tenant_permissions
                     or info.tenant_permissions_ro != vm_info.tenant_permissions_ro
                 ):
                     interfaces_to_sync.append(info)
@@ -338,14 +344,13 @@ class VMPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 info = VMDiskInfo(
                     id=d.id,
                     name=str(d.name),
-                    tenant_id=d.tenant.id if d.tenant else None,
-                    tenant_name=d.tenant.name if d.tenant else "",
+                    tenant_id=None,
+                    tenant_name="",
                     tenant_permissions=safe_to_string(get_custom_field_value(d, "tenant_permissions")),
                     tenant_permissions_ro=safe_to_string(get_custom_field_value(d, "tenant_permissions_ro")),
                 )
                 if (
-                    info.tenant_id != vm_info.tenant_id
-                    or info.tenant_permissions != vm_info.tenant_permissions
+                    info.tenant_permissions != vm_info.tenant_permissions
                     or info.tenant_permissions_ro != vm_info.tenant_permissions_ro
                 ):
                     disks_to_sync.append(info)
@@ -379,7 +384,6 @@ class VMPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, View):
             return redirect("virtualization:virtualmachine_list")
 
         try:
-            vm_tenant = vm.tenant
             vm_permissions = get_custom_field_value(vm, "tenant_permissions")
             vm_permissions_ro = get_custom_field_value(vm, "tenant_permissions_ro")
 
@@ -388,13 +392,10 @@ class VMPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, View):
             updated_disks = 0
             failed_disks = 0
 
+            # Interfaces: CF-only
             for iface in VMInterface.objects.filter(virtual_machine=vm):
                 try:
                     changed = False
-
-                    if iface.tenant_id != (vm_tenant.id if vm_tenant else None):
-                        iface.tenant = vm_tenant
-                        changed = True
 
                     if get_custom_field_value(iface, "tenant_permissions") != vm_permissions:
                         set_custom_field_value(iface, "tenant_permissions", vm_permissions or [])
@@ -412,13 +413,10 @@ class VMPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     failed_ifaces += 1
                     logger.error(f"Error updating VM interface {iface.id}: {str(e)}", exc_info=True)
 
+            # Disks: CF-only
             for disk in VirtualDisk.objects.filter(virtual_machine=vm):
                 try:
                     changed = False
-
-                    if disk.tenant_id != (vm_tenant.id if vm_tenant else None):
-                        disk.tenant = vm_tenant
-                        changed = True
 
                     if get_custom_field_value(disk, "tenant_permissions") != vm_permissions:
                         set_custom_field_value(disk, "tenant_permissions", vm_permissions or [])

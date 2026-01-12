@@ -58,14 +58,13 @@
     <table class="table table-hover">
       <thead>
         <tr>
-          <th>Name</th><th>Tenant</th><th>Permissions (RW)</th><th>Permissions (RO)</th><th>Status</th>
+          <th>Name</th><th>Permissions (RW)</th><th>Permissions (RO)</th><th>Status</th>
         </tr>
       </thead>
       <tbody>
         {% for i in interfaces_to_sync %}
         <tr class="sync-status needs-sync">
           <td><strong>{{ i.name }}</strong></td>
-          <td>{% if i.tenant_name %}{{ i.tenant_name }}{% else %}<em>None</em>{% endif %}</td>
           <td>{% if i.tenant_permissions %}<span class="permission-badge">{{ i.tenant_permissions }}</span>{% else %}<em>Not set</em>{% endif %}</td>
           <td>{% if i.tenant_permissions_ro %}<span class="permission-badge">{{ i.tenant_permissions_ro }}</span>{% else %}<em>Not set</em>{% endif %}</td>
           <td><span class="badge badge-warning">Mismatch</span></td>
@@ -80,14 +79,13 @@
     <table class="table table-hover">
       <thead>
         <tr>
-          <th>Name</th><th>Tenant</th><th>Permissions (RW)</th><th>Permissions (RO)</th><th>Status</th>
+          <th>Name</th><th>Permissions (RW)</th><th>Permissions (RO)</th><th>Status</th>
         </tr>
       </thead>
       <tbody>
         {% for d in disks_to_sync %}
         <tr class="sync-status needs-sync">
           <td><strong>{{ d.name }}</strong></td>
-          <td>{% if d.tenant_name %}{{ d.tenant_name }}{% else %}<em>None</em>{% endif %}</td>
           <td>{% if d.tenant_permissions %}<span class="permission-badge">{{ d.tenant_permissions }}</span>{% else %}<em>Not set</em>{% endif %}</td>
           <td>{% if d.tenant_permissions_ro %}<span class="permission-badge">{{ d.tenant_permissions_ro }}</span>{% else %}<em>Not set</em>{% endif %}</td>
           <td><span class="badge badge-warning">Mismatch</span></td>

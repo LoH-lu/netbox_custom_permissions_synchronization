@@ -1,6 +1,5 @@
-## forms.py
 from django import forms
 
 
-class IPPermissionsSyncForm(forms.Form):
+class PermissionsSyncForm(forms.Form):
     sync_all = forms.BooleanField(required=False)

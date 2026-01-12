@@ -1,5 +1,5 @@
 import logging
-from ipaddress import ip_network, ip_address as ip_addr_obj
+from ipaddress import ip_address as ip_addr_obj, ip_network
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
@@ -7,8 +7,17 @@ from django.shortcuts import redirect, render
 from django.views.generic import View
 
 from ipam.models import IPAddress, Prefix, VLAN
+from virtualization.models import Interface as VMInterface
+from virtualization.models import VirtualDisk, VirtualMachine
 
-from .utils import IPAddressInfo, PrefixInfo, VLANInfo
+from .utils import (
+    IPAddressInfo,
+    PrefixInfo,
+    VLANInfo,
+    VMDiskInfo,
+    VMInterfaceInfo,
+    VirtualMachineInfo,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,8 +93,8 @@ def get_ips_in_prefix(prefix):
     return ips_in_prefix, prefix_net
 
 
-class IPPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, View):
-    """Synchronize IP address permissions from their parent prefix (and its VLAN if assigned)."""
+class PrefixPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """Prefix -> IPs (+ VLAN)"""
 
     permission_required = (
         "ipam.view_ipaddress",
@@ -133,7 +142,6 @@ class IPPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
             ips_to_sync = []
             ips_synced = []
-
             for ip_info in ips_in_prefix:
                 if (
                     ip_info.tenant_permissions != prefix_info.tenant_permissions
@@ -154,7 +162,7 @@ class IPPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, View):
 
             return render(
                 request,
-                "netbox_ip_permissions_synchronization/ip_permissions_sync.html",
+                "netbox_custom_permissions_synchronization/ip_permissions_sync.html",
                 {
                     "prefix": prefix_info,
                     "vlan": vlan_info,
@@ -164,9 +172,8 @@ class IPPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, View):
                     "ips_total": len(ips_in_prefix),
                 },
             )
-
         except Exception as e:
-            logger.error(f"Error in GET request: {str(e)}", exc_info=True)
+            logger.error(f"Error in Prefix GET: {str(e)}", exc_info=True)
             messages.error(request, f"An error occurred: {str(e)}")
             return redirect("ipam:prefix_list")
 
@@ -259,7 +266,6 @@ class IPPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, View):
                 message_parts.append("failed to update VLAN")
 
             if message_parts:
-                # Keep it “success” if anything succeeded (including VLAN-only)
                 if vlan_failed and updated_count == 0 and failed_count == 0 and not vlan_updated:
                     messages.error(request, "Failed to update VLAN")
                 else:
@@ -270,6 +276,186 @@ class IPPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, View):
             return redirect(request.path)
 
         except Exception as e:
-            logger.error(f"Error in POST request: {str(e)}", exc_info=True)
+            logger.error(f"Error in Prefix POST: {str(e)}", exc_info=True)
+            messages.error(request, f"An error occurred: {str(e)}")
+            return redirect(request.path)
+
+
+class VMPermissionsSyncView(LoginRequiredMixin, PermissionRequiredMixin, View):
+    """Virtual Machine -> VM Interfaces + Virtual Disks"""
+
+    permission_required = (
+        "virtualization.view_virtualmachine",
+        "virtualization.view_interface",
+        "virtualization.change_interface",
+        "virtualization.view_virtualdisk",
+        "virtualization.change_virtualdisk",
+    )
+
+    def get(self, request, vm_id):
+        try:
+            vm = VirtualMachine.objects.get(id=vm_id)
+        except VirtualMachine.DoesNotExist:
+            messages.error(request, f"Virtual Machine with ID {vm_id} not found")
+            return redirect("virtualization:virtualmachine_list")
+
+        try:
+            vm_info = VirtualMachineInfo(
+                id=vm.id,
+                name=str(vm.name),
+                tenant_id=vm.tenant.id if vm.tenant else None,
+                tenant_name=vm.tenant.name if vm.tenant else "",
+                tenant_permissions=safe_to_string(get_custom_field_value(vm, "tenant_permissions")),
+                tenant_permissions_ro=safe_to_string(get_custom_field_value(vm, "tenant_permissions_ro")),
+            )
+
+            interfaces = VMInterface.objects.filter(virtual_machine=vm).order_by("name")
+            disks = VirtualDisk.objects.filter(virtual_machine=vm).order_by("name")
+
+            interfaces_to_sync = []
+            interfaces_synced = []
+            for iface in interfaces:
+                info = VMInterfaceInfo(
+                    id=iface.id,
+                    name=str(iface.name),
+                    tenant_id=iface.tenant.id if iface.tenant else None,
+                    tenant_name=iface.tenant.name if iface.tenant else "",
+                    tenant_permissions=safe_to_string(get_custom_field_value(iface, "tenant_permissions")),
+                    tenant_permissions_ro=safe_to_string(get_custom_field_value(iface, "tenant_permissions_ro")),
+                )
+                if (
+                    info.tenant_id != vm_info.tenant_id
+                    or info.tenant_permissions != vm_info.tenant_permissions
+                    or info.tenant_permissions_ro != vm_info.tenant_permissions_ro
+                ):
+                    interfaces_to_sync.append(info)
+                else:
+                    interfaces_synced.append(info)
+
+            disks_to_sync = []
+            disks_synced = []
+            for d in disks:
+                info = VMDiskInfo(
+                    id=d.id,
+                    name=str(d.name),
+                    tenant_id=d.tenant.id if d.tenant else None,
+                    tenant_name=d.tenant.name if d.tenant else "",
+                    tenant_permissions=safe_to_string(get_custom_field_value(d, "tenant_permissions")),
+                    tenant_permissions_ro=safe_to_string(get_custom_field_value(d, "tenant_permissions_ro")),
+                )
+                if (
+                    info.tenant_id != vm_info.tenant_id
+                    or info.tenant_permissions != vm_info.tenant_permissions
+                    or info.tenant_permissions_ro != vm_info.tenant_permissions_ro
+                ):
+                    disks_to_sync.append(info)
+                else:
+                    disks_synced.append(info)
+
+            return render(
+                request,
+                "netbox_custom_permissions_synchronization/vm_permissions_sync.html",
+                {
+                    "vm": vm_info,
+                    "interfaces_to_sync": interfaces_to_sync,
+                    "interfaces_synced": interfaces_synced,
+                    "disks_to_sync": disks_to_sync,
+                    "disks_synced": disks_synced,
+                    "interfaces_total": len(interfaces),
+                    "disks_total": len(disks),
+                },
+            )
+
+        except Exception as e:
+            logger.error(f"Error in VM GET: {str(e)}", exc_info=True)
+            messages.error(request, f"An error occurred: {str(e)}")
+            return redirect("virtualization:virtualmachine_list")
+
+    def post(self, request, vm_id):
+        try:
+            vm = VirtualMachine.objects.get(id=vm_id)
+        except VirtualMachine.DoesNotExist:
+            messages.error(request, "Virtual Machine not found")
+            return redirect("virtualization:virtualmachine_list")
+
+        try:
+            vm_tenant = vm.tenant
+            vm_permissions = get_custom_field_value(vm, "tenant_permissions")
+            vm_permissions_ro = get_custom_field_value(vm, "tenant_permissions_ro")
+
+            updated_ifaces = 0
+            failed_ifaces = 0
+            updated_disks = 0
+            failed_disks = 0
+
+            # Interfaces
+            for iface in VMInterface.objects.filter(virtual_machine=vm):
+                try:
+                    changed = False
+
+                    if iface.tenant_id != (vm_tenant.id if vm_tenant else None):
+                        iface.tenant = vm_tenant
+                        changed = True
+
+                    if get_custom_field_value(iface, "tenant_permissions") != vm_permissions:
+                        set_custom_field_value(iface, "tenant_permissions", vm_permissions or [])
+                        changed = True
+
+                    if get_custom_field_value(iface, "tenant_permissions_ro") != vm_permissions_ro:
+                        set_custom_field_value(iface, "tenant_permissions_ro", vm_permissions_ro or [])
+                        changed = True
+
+                    if changed:
+                        iface.save()
+                        updated_ifaces += 1
+
+                except Exception as e:
+                    failed_ifaces += 1
+                    logger.error(f"Error updating VM interface {iface.id}: {str(e)}", exc_info=True)
+
+            # Disks
+            for disk in VirtualDisk.objects.filter(virtual_machine=vm):
+                try:
+                    changed = False
+
+                    if disk.tenant_id != (vm_tenant.id if vm_tenant else None):
+                        disk.tenant = vm_tenant
+                        changed = True
+
+                    if get_custom_field_value(disk, "tenant_permissions") != vm_permissions:
+                        set_custom_field_value(disk, "tenant_permissions", vm_permissions or [])
+                        changed = True
+
+                    if get_custom_field_value(disk, "tenant_permissions_ro") != vm_permissions_ro:
+                        set_custom_field_value(disk, "tenant_permissions_ro", vm_permissions_ro or [])
+                        changed = True
+
+                    if changed:
+                        disk.save()
+                        updated_disks += 1
+
+                except Exception as e:
+                    failed_disks += 1
+                    logger.error(f"Error updating VM disk {disk.id}: {str(e)}", exc_info=True)
+
+            parts = []
+            if updated_ifaces:
+                parts.append(f"synchronized {updated_ifaces} interface(s)")
+            if updated_disks:
+                parts.append(f"synchronized {updated_disks} disk(s)")
+            if failed_ifaces:
+                parts.append(f"failed {failed_ifaces} interface(s)")
+            if failed_disks:
+                parts.append(f"failed {failed_disks} disk(s)")
+
+            if parts:
+                messages.success(request, f"Successfully {' and '.join(parts)}")
+            else:
+                messages.info(request, "No changes needed")
+
+            return redirect(request.path)
+
+        except Exception as e:
+            logger.error(f"Error in VM POST: {str(e)}", exc_info=True)
             messages.error(request, f"An error occurred: {str(e)}")
             return redirect(request.path)

@@ -1,0 +1,5 @@
+{% load static %}
+<a href="{% url 'plugins:netbox_custom_permissions_synchronization:vm_permissions_sync' vm_id=vm.id %}"
+   class="btn btn-sm btn-primary">
+    <i class="mdi mdi-sync"></i> Sync Permissions
+</a>

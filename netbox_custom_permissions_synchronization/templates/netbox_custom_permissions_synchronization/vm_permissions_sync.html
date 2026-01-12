@@ -1,0 +1,116 @@
+{% extends 'base/layout.html' %}
+
+{% block title %}{{ vm.name }} - Permissions Synchronization{% endblock %}
+
+{% block header %}
+<nav class="breadcrumb-container px-3" aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'virtualization:virtualmachine_list' %}">Virtual Machines</a></li>
+    <li class="breadcrumb-item"><a href="{% url 'virtualization:virtualmachine' pk=vm.id %}">{{ vm.name }}</a></li>
+  </ol>
+</nav>
+{{ block.super }}
+{% endblock %}
+
+{% block content %}
+<style>
+  .sync-status { padding: 10px; border-radius: 4px; margin-bottom: 20px; }
+  .sync-status.needs-sync { background-color: var(--tblr-warning-bg, var(--bs-warning-bg-subtle)); border: 1px solid var(--tblr-warning, var(--bs-warning-border-subtle)); }
+  .sync-status.synced { background-color: var(--tblr-success-bg, var(--bs-success-bg-subtle)); border: 1px solid var(--tblr-success, var(--bs-success-border-subtle)); }
+  .permission-badge { display: inline-block; background-color: var(--tblr-secondary-bg, var(--bs-secondary-bg)); color: var(--tblr-body-color, var(--bs-body-color)); padding: 4px 8px; border-radius: 3px; font-size: 0.85em; margin: 2px; font-family: monospace; }
+</style>
+
+<div class="card">
+  <div class="card-header"><h4>Virtual Machine Information</h4></div>
+  <div class="card-body">
+    <table class="table table-sm">
+      <tr><th>Name:</th><td><strong>{{ vm.name }}</strong></td></tr>
+      <tr><th>Tenant:</th><td>{% if vm.tenant_name %}{{ vm.tenant_name }}{% else %}<em>None</em>{% endif %}</td></tr>
+      <tr><th>Tenant Permissions (RW):</th>
+        <td>{% if vm.tenant_permissions %}<span class="permission-badge">{{ vm.tenant_permissions }}</span>{% else %}<em>Not set</em>{% endif %}</td>
+      </tr>
+      <tr><th>Tenant Permissions (RO):</th>
+        <td>{% if vm.tenant_permissions_ro %}<span class="permission-badge">{{ vm.tenant_permissions_ro }}</span>{% else %}<em>Not set</em>{% endif %}</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="card mt-3">
+  <div class="card-header"><h4>Status</h4></div>
+  <div class="card-body">
+    <p>Interfaces total: <strong>{{ interfaces_total }}</strong> —
+       needing sync: <strong class="text-warning">{{ interfaces_to_sync|length }}</strong> —
+       synced: <strong class="text-success">{{ interfaces_synced|length }}</strong></p>
+
+    <p>Virtual disks total: <strong>{{ disks_total }}</strong> —
+       needing sync: <strong class="text-warning">{{ disks_to_sync|length }}</strong> —
+       synced: <strong class="text-success">{{ disks_synced|length }}</strong></p>
+  </div>
+</div>
+
+{% if interfaces_to_sync or disks_to_sync %}
+<div class="card mt-3">
+  <div class="card-header"><h4>Objects Needing Synchronization</h4></div>
+  <div class="card-body">
+    {% if interfaces_to_sync %}
+    <h5>Interfaces</h5>
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th>Name</th><th>Tenant</th><th>Permissions (RW)</th><th>Permissions (RO)</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for i in interfaces_to_sync %}
+        <tr class="sync-status needs-sync">
+          <td><strong>{{ i.name }}</strong></td>
+          <td>{% if i.tenant_name %}{{ i.tenant_name }}{% else %}<em>None</em>{% endif %}</td>
+          <td>{% if i.tenant_permissions %}<span class="permission-badge">{{ i.tenant_permissions }}</span>{% else %}<em>Not set</em>{% endif %}</td>
+          <td>{% if i.tenant_permissions_ro %}<span class="permission-badge">{{ i.tenant_permissions_ro }}</span>{% else %}<em>Not set</em>{% endif %}</td>
+          <td><span class="badge badge-warning">Mismatch</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {% if disks_to_sync %}
+    <h5 class="mt-4">Virtual Disks</h5>
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th>Name</th><th>Tenant</th><th>Permissions (RW)</th><th>Permissions (RO)</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in disks_to_sync %}
+        <tr class="sync-status needs-sync">
+          <td><strong>{{ d.name }}</strong></td>
+          <td>{% if d.tenant_name %}{{ d.tenant_name }}{% else %}<em>None</em>{% endif %}</td>
+          <td>{% if d.tenant_permissions %}<span class="permission-badge">{{ d.tenant_permissions }}</span>{% else %}<em>Not set</em>{% endif %}</td>
+          <td>{% if d.tenant_permissions_ro %}<span class="permission-badge">{{ d.tenant_permissions_ro }}</span>{% else %}<em>Not set</em>{% endif %}</td>
+          <td><span class="badge badge-warning">Mismatch</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    <div class="text-right mt-3">
+      <form method="post">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-success">
+          <i class="mdi mdi-sync"></i> Sync All
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-success mt-3">
+  <i class="mdi mdi-check-circle"></i> All VM interfaces and disks are already synchronized with the VM permissions!
+</div>
+{% endif %}
+
+{% endblock %}

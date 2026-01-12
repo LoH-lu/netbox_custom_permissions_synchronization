@@ -1,4 +1,4 @@
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __author__ = "Loris Henrion"
 __author_email__ = "loris_henrion@bce.lu"
 __description__ = (

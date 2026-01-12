@@ -1,20 +1,20 @@
-# netbox-ip-permissions-synchronization
+# netbox-custom-permissions-synchronization
 
 ## Overview
 
-This plugin allows you to compare and synchronize IP address permissions (tenant assignments and custom permission fields) with their parent prefix in NetBox. It's useful for ensuring consistent permission and tenant assignments across all IP addresses within a prefix.
+This plugin allows you to compare and synchronize objects custom permissions (tenant assignments and custom permission fields) from their parent objects in NetBox. It's useful for ensuring consistent permission and tenant assignments across all objects within a parent object.
 
 ## Features
 
-- Compare IP address permissions against their parent prefix
+- Compare objects custom permissions against their parent object
 - View tenant and permission field assignments at a glance
-- Synchronize all IP addresses with prefix permissions
+- Synchronize all objects with parent object permissions
 - Automatic detection of mismatched permissions
 - User-friendly interface with color-coded status indicators
 
 ## Compatibility
 
-Tested with NetBox versions 4.3.7.
+Tested with NetBox versions 4.3.7-4.4.10.
 
 ## Installation
 
@@ -27,7 +27,7 @@ source /opt/netbox/venv/bin/activate
 Install the plugin from PyPI:
 
 ```bash
-pip install netbox-ip-permissions-synchronization
+pip install netbox-custom-permissions-synchronization
 ```
 
 Or clone this repository, then go to the folder with it and install the plugin:
@@ -40,7 +40,7 @@ To enable the plugin, add the plugin's name to the `PLUGINS` list in `configurat
 
 ```python
 PLUGINS = [
-    'netbox_ip_permissions_synchronization'
+    'netbox_custom_permissions_synchronization'
 ]
 ```
 
@@ -52,15 +52,17 @@ sudo systemctl restart netbox netbox-rq
 
 ## Usage
 
-Navigate to any Prefix in NetBox and look for the "Sync IP Permissions" button at the top of the page:
+Navigate to any parent object in NetBox and look for the "Sync Permissions" button at the top of the page:
 
 The synchronization page will show:
-- Prefix information including tenant and permission assignments
-- IP addresses that need synchronization (highlighted in yellow)
-- IP addresses that are already synchronized (highlighted in green)
+- Parent object information including tenant and permission assignments
+- Objects that need synchronization (highlighted in yellow)
+- Objects that are already synchronized (highlighted in green)
 
-Select the IP addresses you want to synchronize using the checkboxes, then click:
+Select the objects you want to synchronize using the checkboxes, then click:
 - **"Sync All IPs"** - Synchronize all IP addresses in the prefix
+- **"Sync All Interfaces"** - Synchronize all Interfaces in Virtual Machines
+- **"Sync All Virtual Disks"** - Synchronize all Virtual Disks in Virtual Machines
 
 ## Custom Fields Required
 
@@ -72,8 +74,11 @@ This plugin requires the following custom fields to be created in NetBox:
 These fields should be applied to both:
 - IPAM > Prefix
 - IPAM > IP Address
+- Virtualization > Virtual Machine
+- Virtualization > Interface
+- Virtualization > Virtual Disk
 
-## How It Works
+## How It Works (example with IP addresses and Prefix)
 
 1. When you access the sync page for a prefix, the plugin fetches all IP addresses within that prefix
 2. It compares each IP address's tenant and permission fields with the parent prefix
@@ -90,7 +95,7 @@ If you want to override the default values, configure the `PLUGINS_CONFIG` in yo
 
 ```python
 PLUGINS_CONFIG = {
-    'netbox_ip_permissions_synchronization': {
+    'netbox_custom_permissions_synchronization': {
         # Add any future configuration options here
     }
 }
@@ -98,18 +103,11 @@ PLUGINS_CONFIG = {
 
 Currently, there are no required configuration options. All settings are managed through the NetBox UI.
 
-## Permissions Required
-
-To use this plugin, users need the following permissions:
-- `ipam.view_ipaddress` - View IP addresses
-- `ipam.change_ipaddress` - Modify IP addresses
-- `ipam.view_prefix` - View prefixes
-
 ## Troubleshooting
 
 ### Custom fields not syncing
 - Ensure that the `tenant_permissions` and `tenant_permissions_ro` custom fields exist in NetBox
-- Verify that these custom fields are assigned to both Prefix and IP Address models
+- Verify that these custom fields are assigned to Prefix, IP Address and Virtualization models
 - Check that the field names match exactly (case-sensitive)
 
 ### No IP addresses found
